@@ -894,6 +894,9 @@ class LomatceExplainer:
                 important_motifs=important_motifs,
                 feature_names=list(final_data.columns),
                 class_names=class_names,
+                raw_probas=perturb_probas,
+                cluster_centroids=cluster_centroids,
+                helper=self.helper_instance,
             )
 
             # Evaluate explanation quality if requested
@@ -957,14 +960,22 @@ class LomatceExplanation:
         important_motifs,
         feature_names,
         class_names,
+        raw_probas=None,
+        cluster_centroids=None,
+        helper=None,
     ):
         self.important_features = important_features
         self.prediction_score = prediction_score
         self.local_prediction = local_prediction
-        self.original_prediction = original_prediction
+        self.original_prediction = int(original_prediction)
         self.important_motifs = important_motifs
         self.feature_names = feature_names
         self.class_names = class_names
+        
+        # Optional internal storage for visualization/evaluation
+        self.raw_probas = raw_probas
+        self.cluster_centroids = cluster_centroids
+        self.helper = helper
 
     def get_top_features(self, n=10):
         """Returns the top n most important features."""
@@ -975,39 +986,83 @@ class LomatceExplanation:
         )
 
     def get_explanation_summary(self):
-        """Returns a summary of the explanation."""
+        """
+        Generates a concise summary of the explanation results.
+
+        Returns:
+            dict: A dictionary containing:
+                - 'local_fidelity' (float): R² score indicating the faithfulness of the local surrogate model.
+                - 'local_prediction' (float): Prediction from the interpretable (local) model.
+                - 'original_prediction' (float): Prediction from the black-box model.
+                - 'top_features' (dict): Top important features (clusters) and their importance scores.
+        """
+
         return {
             "local_fidelity": self.prediction_score,
             "local_prediction": self.local_prediction,
             "original_prediction": self.original_prediction,
             "top_features": self.get_top_features(),
         }
+    
+    
+    def visualise(self, origi_instance, show_probas=True, save_path=None):
+        """
+        Visualises the explanation of a time series instance using LOMATCE.
 
-    def visualize(self, time_series_data, save_path=None):
-        """Visualizes the explanation."""
-        plt.figure(figsize=(12, 6))
+        This method produces two plots:
+        1. Cluster centroids overlaid on the original time series.
+        2. Important events from top-k clusters overlaid on the original time series.
 
-        # Plot the time series
-        plt.plot(time_series_data, "b-", alpha=0.3, label="Original Time Series")
+        It also prints a summary including:
+        - The local model's prediction
+        - The original (black-box) model's prediction
+        - The local fidelity score (R²)
+        - (Optional) Class probabilities from the black-box model
 
-        # Plot important regions
-        for feature, importance in self.important_features.items():
-            if feature in self.important_motifs:
-                for motif in self.important_motifs[feature]:
-                    start, duration = motif[0], motif[1]
-                    plt.axvspan(
-                        start,
-                        start + duration,
-                        alpha=abs(importance),
-                        color="red" if importance > 0 else "blue",
-                        label=f"Importance: {importance:.2f}",
-                    )
+        Args:
+            origi_instance (np.ndarray): The original time series instance (2D).
+            show_probas (bool, optional): Whether to display class probabilities. Defaults to True.
+            save_path (str, optional): If provided, saves the final visualisation to the specified path.
 
-        plt.title("Time Series Explanation")
-        plt.xlabel("Time")
-        plt.ylabel("Value")
-        plt.legend()
+        Returns:
+            None
+        """
 
+        # --- Plot 1: Cluster centroids ---
+        print("\n📊 Visual 1: Cluster centroids overlaid on the original time series.")
+        self.helper.plot_events_as_line_on_timeseries_1(
+            origi_instance,
+            self.original_prediction,
+            self.important_features,
+            self.cluster_centroids,
+            self.class_names,
+        )
+
+        # --- Plot 2: Important events ---
+        print("📌 Visual 2: Important events belong to the top-k clusters overlaid on the original time series.")
+        self.helper.plot_events_on_time_series(
+            origi_instance,
+            self.original_prediction,
+            self.important_motifs,
+            self.class_names,
+        )
+
+        # --- Explanation Summary ---
+        class_index = int(self.original_prediction)
+        print("🧠 Explanation Summary:")
+        print(f"• Local prediction (interpretable model): {self.local_prediction:.4f}")
+        print(f"• Black-box model prediction: {class_index} or '{self.class_names[class_index]}'")
+        print(f"• Local fidelity score (R²): {self.prediction_score:.4f}")
+
+        # --- Optional: Class probabilities ---
+        if show_probas and self.raw_probas is not None:
+            print("\n Class Probabilities (from black-box model):")
+            probabilities = self.raw_probas[0].squeeze().tolist()
+            for i, prob in enumerate(probabilities):
+                self.helper.print_colored_filled_boxes(self.class_names[i], i, prob)
+
+        # Optionally save visualisation as an image, if applicable
         if save_path:
             plt.savefig(save_path)
-        plt.show()
+            print(f"\n Visualisation saved to: {save_path}")
+
