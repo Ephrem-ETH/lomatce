@@ -83,6 +83,22 @@ print(summary)
 
 You will get key info like local model prediction, original (black-box model) prediciton and local fidelity score.
 
+#### Sample Explanation Output
+
+<!-- ##### Table **1**: Explanation faithfulness, with 95% confidence interval, across various perturbation methods.
+
+|   Dataset    |      Zero       |      Mean       |   Total_mean    |     Random      |
+| :----------: | :-------------: | :-------------: | :-------------: | :-------------: |
+|   **ECG**    | $0.82 \pm 0.02$ | $0.70 \pm 0.02$ | $0.81 \pm 0.01$ | $0.54 \pm 0.10$ |
+| **GunPoint** | $0.72 \pm 0.02$ | $0.52 \pm 0.03$ | $0.75 \pm 0.08$ | $0.75 \pm 0.08$ | -->
+
+Here's an example of LOMATCE highlighting important regions of a time series:
+
+![center w:13in](./design/important_features_line_plot.png)
+**Fig 2:** Explanation highlights segment significance, relevance scores, and event types (e.g., increasing, decreasing, maxima, minima).
+
+You can explore the example noteboks for each dataset in the [`examples/`] folder.
+
 ### 4. To Reproduce the Experiment
 
 ##### To evaluate the model perfromance and local fidelity over multiple random train-val-test splits:
@@ -99,29 +115,13 @@ python lomatce_simulation.py --model [model-name] --dataset [dataset-name] --num
 python fcn_simulation.py -- model FCN --dataset Coffee --num_runs 100 --class_labels Arabica Robusta --replacement_method random --num_samples 1000
 ```
 
-### 5. Compare LOMATCE with Other XAI Methods
+<!-- ##### Compare LOMATCE with Other XAI Methods -->
 
-To compare LOMATCE against LIME, SHAP, IG and Random baseline.
+##### To compare LOMATCE against LIME, SHAP, IG and Random baseline.
 
 ```python
 python lomatce_vs_baseline.py --dataset [dataset-name] --model [model-checkpoint] --class_labels [list-of-classes]
 ```
-
-## Sample Explanation Output
-
-<!-- ##### Table **1**: Explanation faithfulness, with 95% confidence interval, across various perturbation methods.
-
-|   Dataset    |      Zero       |      Mean       |   Total_mean    |     Random      |
-| :----------: | :-------------: | :-------------: | :-------------: | :-------------: |
-|   **ECG**    | $0.82 \pm 0.02$ | $0.70 \pm 0.02$ | $0.81 \pm 0.01$ | $0.54 \pm 0.10$ |
-| **GunPoint** | $0.72 \pm 0.02$ | $0.52 \pm 0.03$ | $0.75 \pm 0.08$ | $0.75 \pm 0.08$ | -->
-
-Here's an example of LOMATCE highlighting important regions of a time series:
-
-![center w:13in](./design/important_features_line_plot.png)
-**Fig 2:** Explanation highlights segment significance, relevance scores, and event types (e.g., increasing, decreasing, maxima, minima).
-
-You can explore the example noteboks for each dataset in the [`examples/`] folder.
 
 <!-- ## Usage
 
