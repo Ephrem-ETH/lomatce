@@ -406,8 +406,8 @@ class HelperClass:
         ax.legend(legend_patches, legend_labels, loc='upper right')
 
         plt.tight_layout()
-        plt.savefig(f'important_features_line_plot.png', dpi=300, bbox_inches='tight')
-        plt.savefig(f'important_features_line_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{self.base_dir}/important_features_line_plot.png', dpi=300, bbox_inches='tight')
+        plt.savefig(f'{self.base_dir}/important_features_line_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
 
         plt.show()
 
