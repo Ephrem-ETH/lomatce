@@ -26,7 +26,7 @@ We propose LOcal Model-Agnostic Time-series Classification Explanations (LOMATCE
 
 <!-- <img src="design\lomatce_design.png" alt="Method Design Diagram" width="100%" /> -->
 
-![center w:13in](./design/lomatce_design.png)
+![center w:13in](./design/lomatce_final.png)
 
 **Fig 1:** The proposed XAI method for deep learning based time series classifiers using Parameterised Event Primitives (PEPs).
 
@@ -112,7 +112,7 @@ python lomatce_simulation.py --model [model-name] --dataset [dataset-name] --num
 ##### Example
 
 ```
-python fcn_simulation.py -- model FCN --dataset Coffee --num_runs 100 --class_labels Arabica Robusta --replacement_method random --num_samples 1000
+python lomatce_simulation.py -- model FCN --dataset Coffee --num_runs 100 --class_labels Arabica Robusta --replacement_method random --num_samples 1000
 ```
 
 <!-- ##### Compare LOMATCE with Other XAI Methods -->
