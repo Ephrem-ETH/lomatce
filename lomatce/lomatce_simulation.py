@@ -17,8 +17,8 @@ from fastai.vision.all import *
 from torch.utils.data.dataset import ConcatDataset
 from tsai.utils import set_seed
 from sklearn.preprocessing import MinMaxScaler
-from  lomatce.explainer import LomatceExplainer
-import lomatce.utils.test_dataloader as test_loader
+from  explainer import LomatceExplainer
+import utils.test_dataloader as test_loader
 from tabulate import tabulate
 from joblib import Parallel, delayed
 from logging.handlers import QueueHandler, QueueListener
@@ -104,10 +104,11 @@ def trainer (base_dir, model, dls, epochs=150, learning_rate=1e-3, patience=15):
     # Train and evaluate model with early stopping
     # set_seed(42)
     cbs = [early_stopping] #ShowGraph(), save_callback
-    learn = Learner(dls=dls, model=model, opt_func=Adam, metrics=metrics,cbs=cbs) #
-    learn.fit_one_cycle(epochs, learning_rate)
-    # learn.save_all(path=path, dls_fname='dls', model_fname='model', learner_fname='learner')
-    return learn
+    learner = Learner(dls=dls, model=model, opt_func=Adam, metrics=metrics,cbs=cbs) #
+    learner.fit_one_cycle(epochs, learning_rate)
+    print("Type of object before save_all:", type(learner))
+    learner.save_all(path=path, dls_fname='dls', model_fname='model', learner_fname='learner')
+    return learner
 
 def validator(learn, X_test, y_test):
     dls = learn.dls
@@ -187,7 +188,8 @@ def run_single_iteration(base_dir, run, X, y, model_name, class_names,replacemen
 def monte_carlo_cross_val_parallel(base_dir, model_name, num_runs, class_names, replacement_method='zero', num_samples=1000):
     start_time = time.time()
     
-    results = Parallel(n_jobs=6, backend='loky')(
+    
+    results = Parallel(n_jobs=1, backend='loky')(
         delayed(run_single_iteration)(base_dir, run, X, y, model_name, class_names, replacement_method, num_samples) for run in range(num_runs)
     )
 
@@ -256,7 +258,7 @@ if __name__ == "__main__":
     r_method = args.replacement_method
     num_samples = args.num_samples
 
-    print(f'{dsid}, {model_name}, {num_runs}')
+    print(f'{dsid}, {model_class}, {num_runs}')
 
     cur_time = time.strftime('%Y-%m-%d_%H-%M-%S')
     base_dir = f'results/simulation/{dataset_name}/{model_name}-{r_method}--{cur_time}' if 'cuda' in str(device) else f'results/{dataset_name}--{cur_time}'

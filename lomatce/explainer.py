@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import joblib
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections import defaultdict, Counter
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -252,7 +254,7 @@ class LomatceExplainer:
         Returns:
             tuple: Number of clusters, silhouette score, sum of squared distances, and KMeans model
         """
-        kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(data_transformed)
+        kmeans = KMeans(n_clusters=n_clusters, init="k-means++", random_state=0).fit(data_transformed)
         labels = kmeans.labels_
         silhouette_avg = silhouette_score(data_transformed, labels)
         sse = kmeans.inertia_
@@ -781,7 +783,7 @@ class LomatceExplainer:
         classifier_fn,
         num_perturbations=1000,
         n_clusters=20,
-        kernel_width=None,
+        kernel_scale=None,
         top_n=10,
         class_names=[0, 1],
         model_regressor=None,
@@ -841,8 +843,12 @@ class LomatceExplainer:
             )
 
             # Calculate kernel width and weights
-            if kernel_width is None:
-                kernel_width = 2 * np.sqrt(len(final_data.columns))
+            # Kernel width scales with number of sqrt(clusters)
+            n_clusters = len(final_data.columns)
+            if kernel_scale is None:
+                kernel_width = 2 * np.sqrt(n_clusters)
+            else:
+                kernel_width = kernel_scale * np.sqrt(n_clusters)
             weights = perturbation.kernel(np.array(distances), kernel_width)
 
             # Get predicitons from classifier
@@ -878,7 +884,7 @@ class LomatceExplainer:
                 self.extract_local_max_min_events(origi_instance),
             ).iloc[0]
 
-            important_motifs = self.helper_instance.events_in_topK_clusters(
+            important_motifs, important_motifs_with_cluster  = self.helper_instance.events_in_topK_clusters(
                 selected_features,
                 origi_instance_events,
                 kmeans_dict=kmeans_dict,
@@ -892,6 +898,7 @@ class LomatceExplainer:
                 local_prediction=local_pred,
                 original_prediction=perturb_preds[0].item(),
                 important_motifs=important_motifs,
+                important_motifs_with_cluster=important_motifs_with_cluster,
                 feature_names=list(final_data.columns),
                 class_names=class_names,
                 raw_probas=perturb_probas,
@@ -958,6 +965,7 @@ class LomatceExplanation:
         local_prediction,
         original_prediction,
         important_motifs,
+        important_motifs_with_cluster,
         feature_names,
         class_names,
         raw_probas=None,
@@ -969,6 +977,7 @@ class LomatceExplanation:
         self.local_prediction = local_prediction
         self.original_prediction = int(original_prediction)
         self.important_motifs = important_motifs
+        self.important_motifs_with_cluster = important_motifs_with_cluster
         self.feature_names = feature_names
         self.class_names = class_names
         
