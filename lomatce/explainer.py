@@ -22,16 +22,11 @@ import fastdtw
 import torch
 
 # Import local modules based on environment
-try:
-    # Local environment imports
-    from lomatce.utils.helper_class import HelperClass
-    import lomatce.perturbation as perturbation
-    from lomatce.utils.test_dataloader import test_dataloader
-except ImportError:
-    # Server environment imports
-    from lomatce.utils.helper_class import HelperClass
-    import lomatce.perturbation as perturbation
-    from lomatce.utils.test_dataloader import test_dataloader
+# Local environment imports
+from lomatce.utils.helper_class import HelperClass
+import lomatce.perturbation as perturbation
+from lomatce.utils.test_dataloader import test_dataloader
+
 
 
 logging.basicConfig(level=logging.INFO)

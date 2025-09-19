@@ -56,13 +56,7 @@ def predict_fn(data, learner):
     data_dl = test_loader.test_dataloader(learner, data)
     data_probas, _, _ = learner.get_preds(dl=data_dl, with_decoded=True, save_preds=None)
     return data_probas.numpy()
-# #For LOMATCE as the method needs both the probabilites and predictions  
-# def predict_fn(data, learner):
-#     if len(data.shape) == 2:
-#         data = data.reshape(data.shape[0], 1, data.shape[1])
-#     data_dl = test_dataloader(learner, data)
-#     data_probas, _, data_preds = learner.get_preds(dl=data_dl, with_decoded=True, save_preds=None)
-#     return data_probas, data_preds
+
 
 def segment_time_series(X, segment_length, num_features=None):
      # Check if X is 2D (has only two dimensions)
@@ -90,9 +84,7 @@ def preprocess_for_shap(X):
 
 # 1. Define your segmentation
 def create_segments(X, num_segments=None):
-    """
-    If num_segments is None, treat each timestep as one segment.
-    """
+    
     num_samples, num_channels, sequence_length = X.shape
     print(f" input shape: {X.shape}")
     if num_segments is None:
@@ -152,43 +144,7 @@ def compute_lime_importances(flat_series, predict_fn, num_slices=None, num_featu
         important_timesteps.extend(range(start, end))
     return important_timesteps
 def compute_shap_values(instance_to_explain, X_train, learner, prediction, num_slices=None, background_proportion=0.3, K=50):
-    # if num_slices is None:
-    #     num_slices = instance.shape[1]
-    # X_train_segments = segment_time_series(X_train, num_slices)
-    # X_train_flat = preprocess_for_shap(X_train_segments)
     
-    # instance_segments = segment_time_series(instance, num_slices)
-    # instance_flat = preprocess_for_shap(instance_segments)
-    # # Determine the size of the background dataset dynamically
-    # num_background_samples = int(len(X_train_flat) * background_proportion)
-    # print(num_background_samples)
-    # # If the dataset is small, use all samples as background
-    # if num_background_samples < 1:
-    #     num_background_samples = len(X_train_flat)
-    # if K > len(X_train_flat):
-    #     K= len(X_train_flat)
-        
-        
-    # # Option 1: Sample K background samples
-    # background = shap.sample(X_train_flat, K )
-    
-    # # Option 2: Or use K-means to cluster the background into K samples
-    # # background = shap.kmeans(X_train_flat, K)
-    
-    # # background = X_train_flat[:num_background_samples]
-    # # Initialize SHAP KernelExplainer
-    # explainer = shap.KernelExplainer(predict_fn, background)  # Use a subset for the background dataset
-
-    # # Explain a specific test sample
-    # shap_values = explainer.shap_values(instance_flat)
-    # shap_values = shap_values[0,:,prediction]  # Extract the SHAP values for the  class or output
-    # shap_values_flat = np.array(shap_values).flatten()
-    # # Sort the time steps based on their SHAP values (descending order)
-    # sorted_indices = np.argsort(-np.abs(shap_values))  # Sort in descending order to get the highest values first
-    # # sorted_indices = np.argsort(-shap_values)  # Sort in descending order by absolute value
-    # # Return the sorted SHAP values and corresponding time steps
-    # sorted_shap_values = shap_values[sorted_indices]
-    # important_time_steps = sorted_indices 
     
     # Setup KernelExplainer
     num_segments, segment_length = create_segments(X_train, num_slices)
@@ -354,13 +310,7 @@ def compute_performance_decrease(export_dir, instances, labels, replacement_meth
     return performance_dict
 
 def save_performance_dict_to_file(performance_dict, filename):
-    """
-    Save the performance dictionary as a table to a file.
-
-    Parameters:
-        performance_dict: Dictionary containing performance decrease information.
-        filename: Name of the file to save the table.
-    """
+    
     headers = ["XAI Method", "R-Method", "Accuracy Decrease", "F1 Score Decrease"]
     rows = []
     
