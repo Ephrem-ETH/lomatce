@@ -464,6 +464,7 @@ class HelperClass:
     
     def events_in_topK_clusters(self, topK_clusters, parametrised_events, kmeans_dict=None, scaler_dict=None):
         important_motifs = {}
+        important_motifs_with_cluster = {}
         
         
         
@@ -491,6 +492,7 @@ class HelperClass:
             
             # Initialize list to store salient events
             salient_events = []
+            salient_events_with_cluster = []
             
             # Retrieve parametrized events for the current event name
             parametrized_event = parametrised_events.get(event_name, [])
@@ -508,16 +510,19 @@ class HelperClass:
                 if int(cluster_number) == int(predicted_label +1):
                     # Append event with importance score to the list
                     salient_events.append({'event': event, 'importance_score': importance_score})
+                    salient_events_with_cluster.append({'event': event, 'importance_score': importance_score, 'cluster': int(cluster_number)})
                     # print('event added')
                 
             
             # Append or initialize salient events for the current event name
             if event_name in important_motifs.keys():
                 important_motifs[event_name].extend(salient_events)
+                important_motifs_with_cluster[event_name].extend(salient_events_with_cluster)
             else:
                 important_motifs[event_name] = salient_events
+                important_motifs_with_cluster[event_name] = salient_events_with_cluster
 
-        return important_motifs
+        return important_motifs, important_motifs_with_cluster
 
     def plot_events_on_time_series(self, X, y, important_motifs, class_names):
         class_idx = y  # Change this index based on the class you want to visualize
