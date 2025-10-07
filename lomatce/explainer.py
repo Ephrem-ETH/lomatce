@@ -555,7 +555,7 @@ class LomatceExplainer:
         return full_data, kmeans_dict, scaler_dict, cluster_centroids, master_dict
 
     def apply_lr(
-        self, processed_data, target, weights, class_names, master_dict, model_regressor
+        self, processed_data, target, weights, class_names, master_dict, model_regressor, top_n
     ):
         try:
             logger.info("Applying linear regression")
@@ -612,7 +612,7 @@ class LomatceExplainer:
                     zip(feature_names, feature_importance),
                     key=lambda x: abs(x[1]),
                     reverse=True,
-                )[: LomatceConfig.TOP_N_FEATURES]
+                )[:top_n]
 
             # Sort for visualization
             filtered_importance.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -740,6 +740,7 @@ class LomatceExplainer:
             class_names=class_names,
             master_dict=master_dict,
             model_regressor=model_regressor,
+            top_n=top_n
         )
 
         # Calculate top_n dynamically

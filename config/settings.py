@@ -5,7 +5,9 @@ from typing import List, Optional, Tuple
 @dataclass
 class LomatceConfig:
         
-
+    # LOMATCE settings
+    FEATURE_IMPORTANCE_THRESHOLD: float = 0.0001
+    
     # Output
     VERBOSE: bool = True
     SAVE_EXPLANATIONS: bool = True
