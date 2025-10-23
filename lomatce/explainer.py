@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import joblib
 import os
 import sys
+import time
+import psutil
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections import defaultdict, Counter
 from sklearn.cluster import KMeans
@@ -18,7 +20,6 @@ import logging
 from typing import Dict, List, Optional, Union
 from config.settings import LomatceConfig
 from scipy.stats import spearmanr
-import fastdtw
 import torch
 
 # Import local modules based on environment
@@ -33,16 +34,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class Config:
-    MAX_STABLE_ITERATIONS = 4
-    DEFAULT_K = 20
-    KERNEL_WIDTH_MULTIPLIER = 2
-    # ... other configuration values
-
 
 class LomatceExplainer:
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, config=None):
         self.base_dir = base_dir
+        self.default_config = config if config else LomatceConfig()
         self.helper_instance = HelperClass(base_dir=base_dir)
 
     def preprocessing_data(self, X):
@@ -238,134 +234,339 @@ class LomatceExplainer:
         inner_values_2d = np.array(inner_values, dtype=object).tolist()
         return inner_values_2d
 
-    def evaluate_kmeans(self, n_clusters, data_transformed):
+    # def evaluate_kmeans(self, n_clusters, data_transformed):
+    #     """
+    #     Evaluates the K-means clustering algorithm.
+
+    #     Args:
+    #         n_clusters (int): Number of clusters
+    #         data_transformed (np.ndarray): Transformed data
+
+    #     Returns:
+    #         tuple: Number of clusters, silhouette score, sum of squared distances, and KMeans model
+    #     """
+    #     kmeans = KMeans(n_clusters=n_clusters, init="k-means++", random_state=0).fit(data_transformed)
+    #     labels = kmeans.labels_
+    #     silhouette_avg = silhouette_score(data_transformed, labels)
+    #     sse = kmeans.inertia_
+    #     return n_clusters, silhouette_avg, sse, kmeans
+
+    # def cluster_events(self, all_events, k=20, col_name="", n_jobs=None):
+    #     """
+    #     Clusters events using the K-means algorithm.
+
+    #     Args:
+    #         all_events (list): List of events
+    #         k (int): Maximum number of clusters
+    #         col_name (str): Column name
+    #         n_jobs (int): Number of jobs for parallel processing
+
+    #     Returns:
+    #         tuple: KMeans model and scaler
+    #     """
+    #     # Preprocess the data
+    #     data = np.array(all_events, dtype=np.float32)
+    #     scaler = StandardScaler()
+    #     data_transformed = scaler.fit_transform(data)
+    #     # Convert the scaled data to float64
+    #     data_transformed = data_transformed.astype(np.float64)
+
+    #     # Use 1/3 of the available cores if less than 21, otherwise use half, at least 1
+    #     # NOTE: This is mainly for local machines. On servers (with more cores), using half is fine.
+    #     # On local machines, using too many cores may cause deadlock if all are occupied.
+    #     if n_jobs is None:
+    #         total_cores = cpu_count()
+    #         if total_cores < 21:
+    #             n_jobs = max(1, total_cores // 4)
+    #         else:
+    #             n_jobs = max(1, total_cores // 2)
+    #         fraction = f"{n_jobs}/{total_cores}"
+    #     else:
+    #         n_jobs = min(n_jobs, cpu_count())
+    #         total_cores = cpu_count()
+    #         fraction = f"{n_jobs}/{total_cores}"
+    #     print(f"Running on {n_jobs} cpu cores ({fraction} of total cores)")
+
+    #     try:
+    #         # Evaluate K-means clustering in parallel
+    #         results = Parallel(n_jobs=n_jobs, backend="loky")(
+    #             delayed(self.evaluate_kmeans)(n_clusters, data_transformed)
+    #             for n_clusters in range(2, k)
+    #         )
+    #     except Exception as e:
+    #         print(f"Parallel execution failed: {e}. Running sequentially.")
+    #         results = [
+    #             self.evaluate_kmeans(n_clusters, data_transformed)
+    #             for n_clusters in range(2, k)
+    #         ]
+
+    #     # Extract the results
+    #     silhouette_scores = [result[1] for result in results]
+    #     sse = [result[2] for result in results]
+    #     n_clusters_range = [result[0] for result in results]
+
+    #     # Stability check
+    #     max_stable_iterations = 4
+    #     stable_count = 0
+    #     optimal_k_index = np.argmax(silhouette_scores)
+    #     optimal_k = n_clusters_range[
+    #         optimal_k_index
+    #     ]  # This correctly maps to the number of clusters
+
+    #     # Perform stability check
+    #     for i in range(max_stable_iterations, len(silhouette_scores)):
+    #         recent_scores = silhouette_scores[i - max_stable_iterations : i]
+    #         if np.all(np.diff(recent_scores) == 0):
+    #             stable_count += 1
+    #         else:
+    #             stable_count = 0
+
+    #         if stable_count >= max_stable_iterations:
+    #             optimal_k = n_clusters_range[i]
+    #             break
+
+    #     # Find the optimal number of clusters
+    #     optimal_k_1 = np.argmax(silhouette_scores) + 2
+    #     # Print the optimal number of clusters for the current column
+    #     print(f"Optimal number of clusters for {col_name}: {optimal_k} = {optimal_k_1}")
+
+    #     # Fit the kmeans with optimal K value
+    #     kmeans = KMeans(n_clusters=optimal_k, random_state=12).fit(data_transformed)
+    #     labels = kmeans.labels_
+    #     centroids = kmeans.cluster_centers_
+
+    #     # Plotting (optional)
+    #     #   if col_name:
+    #     #       plt.figure()
+    #     #       plt.plot(range(2, k), silhouette_scores, marker='o')
+    #     #       plt.xlabel('Number of clusters', fontsize=12)
+    #     #       plt.ylabel('Silhouette score', fontsize=12)
+    #     #       plt.title('Silhouette Method', fontsize=14)
+    #     #       plt.grid(True)
+    #     #       # Ensure x-axis has integer steps
+    #     #       plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    #     #       plt.savefig(f'{self.base_dir}/{col_name}_silhouette_plot.png', dpi=300)
+    #     #       plt.savefig(f'{self.base_dir}/{col_name}_silhouette_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
+    #     #       plt.show()
+
+    #     #       plt.figure()
+    #     #       plt.plot(range(2, k), sse)
+    #     #       plt.xlabel('Number of clusters', fontsize=12)
+    #     #       plt.ylabel('Sum of squared distances', fontsize=12)
+    #     #       plt.title('Elbow Method', fontsize=12)
+    #     #       plt.grid(True)
+    #     #       # Ensure x-axis has integer steps
+    #     #       plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    #     #       plt.savefig(f'{self.base_dir}/{col_name}_elbow_plot.png', dpi=300)
+    #     #       plt.savefig(f'{self.base_dir}/{col_name}_elbow_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
+    #     #       plt.show()
+
+    #     return kmeans, scaler
+        
+    
+    def evaluate_kmeans(
+        self,
+        n_clusters,
+        data_transformed,
+        config: Optional[LomatceConfig] = None
+        
+    ):
         """
-        Evaluates the K-means clustering algorithm.
+        Evaluates K-means or MiniBatchKMeans for a given number of clusters.
+        Automatically decides whether to use MiniBatchKMeans based on data size.
 
         Args:
-            n_clusters (int): Number of clusters
-            data_transformed (np.ndarray): Transformed data
+            n_clusters (int): Number of clusters.
+            data_transformed (np.ndarray): Scaled data.
+            minibatch_threshold (int): Threshold for switching to MiniBatchKMeans.
+            silhouette_sample_cap (int): Max number of samples for silhouette.
+            silhouette_fraction (float): Fraction of samples for silhouette score.
 
         Returns:
-            tuple: Number of clusters, silhouette score, sum of squared distances, and KMeans model
+            tuple: (n_clusters, silhouette_avg, sse, kmeans)
         """
-        kmeans = KMeans(n_clusters=n_clusters, init="k-means++", random_state=0).fit(data_transformed)
+        
+        cfg = config or self.default_config
+        minibatch_threshold = cfg.MINIBATCH_THRESHOLD
+        silhouette_sample_cap = cfg.SILHOUETTE_SAMPLE_CAP
+        silhouette_fraction = cfg.SILHOUETTE_FRACTION
+        
+        
+        n, d = data_transformed.shape
+
+        # Automatically decide whether to use MiniBatchKMeans
+        use_minibatch = n > minibatch_threshold
+        if use_minibatch:
+            from sklearn.cluster import MiniBatchKMeans as KMeansModel
+            kmeans = KMeansModel(
+                n_clusters=n_clusters,
+                init="k-means++",
+                batch_size=2048,
+                n_init=5,
+                max_iter=50,
+                random_state=0,
+            ).fit(data_transformed)
+        else:
+            from sklearn.cluster import KMeans as KMeansModel
+            kmeans = KMeansModel(
+                n_clusters=n_clusters,
+                init="k-means++",
+                n_init=10,
+                max_iter=100,
+                random_state=0,
+            ).fit(data_transformed)
+
         labels = kmeans.labels_
-        silhouette_avg = silhouette_score(data_transformed, labels)
+
+        # Adaptive sample size for silhouette
+        # sample_size = min(int(max(1000, n * silhouette_fraction)), silhouette_sample_cap)
+        if silhouette_sample_cap is None:
+            sample_size = int(max(1000, n * silhouette_fraction))
+        else:
+            sample_size = min(int(max(1000, n * silhouette_fraction)), silhouette_sample_cap)
+        if n > sample_size:
+            idx = np.random.choice(n, sample_size, replace=False)
+            silhouette_avg = silhouette_score(data_transformed[idx], labels[idx])
+        else:
+            silhouette_avg = silhouette_score(data_transformed, labels)
+
         sse = kmeans.inertia_
         return n_clusters, silhouette_avg, sse, kmeans
 
-    def cluster_events(self, all_events, k=20, col_name="", n_jobs=None):
+
+    def cluster_events(
+        self,
+        all_events,
+        k=20,
+        col_name=None,
+        n_jobs=None,
+        config: Optional[LomatceConfig] = None,
+        
+    ):
         """
-        Clusters events using the K-means algorithm.
+        Clusters events using the K-means algorithm with adaptive thresholds.
 
         Args:
-            all_events (list): List of events
-            k (int): Maximum number of clusters
-            col_name (str): Column name
-            n_jobs (int): Number of jobs for parallel processing
+            all_events (list or np.ndarray): List of events.
+            k (int): Max number of clusters to test.
+            col_name (str): Optional column/event name for labeling.
+            n_jobs (int): Number of CPU cores to use (adaptive if None).
+            minibatch_threshold (int): Threshold for MiniBatchKMeans.
+            silhouette_sample_cap (int): Max samples for silhouette scoring.
+            silhouette_fraction (float): Fraction of samples for silhouette.
+            large_data_threshold (int): Controls adaptive CPU allocation.
+            analysis (bool): If True, runs and logs empirical performance metrics.
 
         Returns:
-            tuple: KMeans model and scaler
+            dict: {
+            "kmeans": final KMeans model,
+            "scaler": StandardScaler used,
+            "optimal_k": int,
+            "silhouette_score": float,
+            "clustering_time": float (seconds),
+            "n_jobs": int,
+            "memory_used": float (MB)
+        }
         """
-        # Preprocess the data
+        
+        cfg = config or self.default_config
+   
+        
+
         data = np.array(all_events, dtype=np.float32)
         scaler = StandardScaler()
-        data_transformed = scaler.fit_transform(data)
-        # Convert the scaled data to float64
-        data_transformed = data_transformed.astype(np.float64)
+        data_transformed = scaler.fit_transform(data).astype(np.float64)
+        n_samples, n_features = data_transformed.shape
 
-        # Use 1/3 of the available cores if less than 21, otherwise use half, at least 1
-        # NOTE: This is mainly for local machines. On servers (with more cores), using half is fine.
-        # On local machines, using too many cores may cause deadlock if all are occupied.
+        # Adaptive CPU utilization
+        total_cores = cpu_count()
         if n_jobs is None:
-            total_cores = cpu_count()
-            if total_cores < 21:
-                n_jobs = max(1, total_cores // 4)
-            else:
-                n_jobs = max(1, total_cores // 2)
-            fraction = f"{n_jobs}/{total_cores}"
-        else:
-            n_jobs = min(n_jobs, cpu_count())
-            total_cores = cpu_count()
-            fraction = f"{n_jobs}/{total_cores}"
-        print(f"Running on {n_jobs} cpu cores ({fraction} of total cores)")
+            n_jobs = max(1, total_cores //4)
+        n_jobs = min(n_jobs, total_cores)
+        print(f"Running on {n_jobs}/{total_cores} CPU cores")
 
+        # Adaptive k limit
+        if k is None:
+            k = cfg.DEFAULT_K
+        max_k = min(k, max(10, int(np.sqrt(n_samples / 2))))
+        print(f"Testing up to {max_k} clusters (adaptive based on {n_samples} samples)")
+
+        # Record memory and time before clustering 
+        
+        start_time = time.time()
+        
         try:
-            # Evaluate K-means clustering in parallel
             results = Parallel(n_jobs=n_jobs, backend="loky")(
-                delayed(self.evaluate_kmeans)(n_clusters, data_transformed)
-                for n_clusters in range(2, k)
+                delayed(self.evaluate_kmeans)(
+                    n_clusters,
+                    data_transformed,
+                    config=cfg
+                )
+                for n_clusters in range(2, max_k)
             )
         except Exception as e:
             print(f"Parallel execution failed: {e}. Running sequentially.")
             results = [
-                self.evaluate_kmeans(n_clusters, data_transformed)
-                for n_clusters in range(2, k)
+                self.evaluate_kmeans(
+                    n_clusters,
+                    data_transformed,
+                    config=cfg
+                )
+                for n_clusters in range(2, max_k)
             ]
 
-        # Extract the results
-        silhouette_scores = [result[1] for result in results]
-        sse = [result[2] for result in results]
-        n_clusters_range = [result[0] for result in results]
+        silhouette_scores = [r[1] for r in results]
+        sse = [r[2] for r in results]
+        n_clusters_range = [r[0] for r in results]
 
-        # Stability check
-        max_stable_iterations = 4
-        stable_count = 0
+        # Find optimal K
         optimal_k_index = np.argmax(silhouette_scores)
-        optimal_k = n_clusters_range[
-            optimal_k_index
-        ]  # This correctly maps to the number of clusters
+        optimal_k = n_clusters_range[optimal_k_index]
+        print(f"Optimal number of clusters for {col_name or 'data'}: {optimal_k}")
 
-        # Perform stability check
+        # Optional stability check
+        max_stable_iterations = cfg.MAX_STABLE_ITERATIONS
+        stable_count = 0
         for i in range(max_stable_iterations, len(silhouette_scores)):
             recent_scores = silhouette_scores[i - max_stable_iterations : i]
             if np.all(np.diff(recent_scores) == 0):
                 stable_count += 1
             else:
                 stable_count = 0
-
             if stable_count >= max_stable_iterations:
                 optimal_k = n_clusters_range[i]
                 break
 
-        # Find the optimal number of clusters
-        optimal_k_1 = np.argmax(silhouette_scores) + 2
-        # Print the optimal number of clusters for the current column
-        print(f"Optimal number of clusters for {col_name}: {optimal_k} = {optimal_k_1}")
+        # Final fit
+        final_kmeans = KMeans(
+            n_clusters=optimal_k,
+            init="k-means++",
+            n_init=10,
+            max_iter=100,
+            random_state=12,
+        ).fit(data_transformed)
+        
+        # Record memory and time after clustering
+        # mem_after = proc.memory_info().rss / (1024 * 1024)  # MB
+        clustering_time = time.time() - start_time
+        # mem_used = mem_after - mem_before
+        
+        result = {
+        "kmeans": final_kmeans,
+        "scaler": scaler,
+        "optimal_k": optimal_k,
+        "silhouette_score": silhouette_scores[optimal_k_index],
+        "clustering_time": clustering_time,
+        "n_samples": n_samples,
+        "n_jobs": n_jobs,
+        # "memory_used": mem_used
+        }
 
-        # Fit the kmeans with optimal K value
-        kmeans = KMeans(n_clusters=optimal_k, random_state=12).fit(data_transformed)
-        labels = kmeans.labels_
-        centroids = kmeans.cluster_centers_
+ 
 
-        # Plotting (optional)
-        #   if col_name:
-        #       plt.figure()
-        #       plt.plot(range(2, k), silhouette_scores, marker='o')
-        #       plt.xlabel('Number of clusters', fontsize=12)
-        #       plt.ylabel('Silhouette score', fontsize=12)
-        #       plt.title('Silhouette Method', fontsize=14)
-        #       plt.grid(True)
-        #       # Ensure x-axis has integer steps
-        #       plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-        #       plt.savefig(f'{self.base_dir}/{col_name}_silhouette_plot.png', dpi=300)
-        #       plt.savefig(f'{self.base_dir}/{col_name}_silhouette_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
-        #       plt.show()
+        return result
 
-        #       plt.figure()
-        #       plt.plot(range(2, k), sse)
-        #       plt.xlabel('Number of clusters', fontsize=12)
-        #       plt.ylabel('Sum of squared distances', fontsize=12)
-        #       plt.title('Elbow Method', fontsize=12)
-        #       plt.grid(True)
-        #       # Ensure x-axis has integer steps
-        #       plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-        #       plt.savefig(f'{self.base_dir}/{col_name}_elbow_plot.png', dpi=300)
-        #       plt.savefig(f'{self.base_dir}/{col_name}_elbow_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
-        #       plt.show()
 
-        return kmeans, scaler
 
     def event_attribution(self, kmeans, parametrized_events, scaler):
         """
@@ -435,6 +636,9 @@ class LomatceExplainer:
         scaler_dict=None,
         for_eval=False,
         n_jobs=None,
+        config: Optional[LomatceConfig] = None,
+        analysis: bool = False,
+        
     ):
         """
         Prepares the data for linear surrogate model.
@@ -451,11 +655,15 @@ class LomatceExplainer:
             tuple: Appended DataFrame, master dictionary, cluster centroids, KMeans dictionary, and scaler dictionary
         """
         #   helper_instance = HelperClass(base_dir="results")
-
+        
+        cfg = config or self.default_config
+        
+    
         appended_df = pd.DataFrame()
         count = 0
         master_dict = {}
         cluster_centroids = {}
+        clustering_stats = {}
         if kmeans_dict is None:
             kmeans_dict = {}
             scaler_dict = {}
@@ -475,9 +683,24 @@ class LomatceExplainer:
                     kmeans, parametrized_events, scaler
                 )
             else:
-                kmeans, scaler = self.cluster_events(flatten_data, k, col_name=col_name)
+                cluster_result = self.cluster_events(flatten_data, k, col_name=col_name, n_jobs=n_jobs, config=cfg)
+                
+                # Store models
+                kmeans = cluster_result["kmeans"]
+                scaler = cluster_result["scaler"]
                 kmeans_dict[col_name] = kmeans
                 scaler_dict[col_name] = scaler
+
+                # Record metrics per event
+                if analysis:
+                    clustering_stats[col_name] = {
+                        "optimal_k": cluster_result["optimal_k"],
+                        "silhouette_score": cluster_result["silhouette_score"],
+                        "clustering_time": cluster_result["clustering_time"],
+                        "n_samples": cluster_result["n_samples"],
+                        # "memory_used": cluster_result["memory_used"],
+                        "n_jobs": cluster_result["n_jobs"],
+                    }
                 attributed_data = self.event_attribution(
                     kmeans, parametrized_events, scaler
                 )
@@ -513,46 +736,48 @@ class LomatceExplainer:
         joblib.dump(kmeans_dict, f"{self.base_dir}/kmeans_models_dict.pkl")
         joblib.dump(scaler_dict, f"{self.base_dir}/scaler_models_dict.pkl")
 
-        return appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict
+        
+        return appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats
+        
 
-    def combine_data(self, X_test, kmeans_dict=None, scaler_dict=None, for_eval=False):
-        """
-        Combines the data from different sources.
+    # def combine_data(self, X_test, kmeans_dict=None, scaler_dict=None, for_eval=False):
+    #     """
+    #     Combines the data from different sources.
 
-        Args:
-            X_test (np.ndarray): Test data
-            kmeans_dict (dict): Dictionary containing KMeans models
-            scaler_dict (dict): Dictionary containing scaler objects
-            for_eval (bool): Flag indicating whether to prepare data for evaluation
+    #     Args:
+    #         X_test (np.ndarray): Test data
+    #         kmeans_dict (dict): Dictionary containing KMeans models
+    #         scaler_dict (dict): Dictionary containing scaler objects
+    #         for_eval (bool): Flag indicating whether to prepare data for evaluation
 
-        Returns:
-            tuple: Full data, KMeans dictionary, scaler dictionary, cluster centroids, and master dictionary
-        """
-        df = self.preprocessing_data(X_test)
-        df_inc_dec = self.extract_inc_dec_events(X_test)
-        df_max_min = self.extract_local_max_min_events(X_test)
-        merged_df = self.merge_event_df(df_inc_dec=df_inc_dec, df_max_min=df_max_min)
-        if for_eval:
-            # print(kmeans_dict)
-            kmeans_dict = kmeans_dict
-            scaler_dict = scaler_dict
-            appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
-                self.prepare_data4DT(
-                    merged_df,
-                    kmeans_dict=kmeans_dict,
-                    scaler_dict=scaler_dict,
-                    for_eval=True,
-                )
-            )
-            # print(kmeans_dict)
-        else:
-            appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
-                self.prepare_data4DT(merged_df)
-            )
-        # master_dict = self.helper_instance.update_master_dict(master_dict)
-        full_data = appended_df.copy()
+    #     Returns:
+    #         tuple: Full data, KMeans dictionary, scaler dictionary, cluster centroids, and master dictionary
+    #     """
+    #     df = self.preprocessing_data(X_test)
+    #     df_inc_dec = self.extract_inc_dec_events(X_test)
+    #     df_max_min = self.extract_local_max_min_events(X_test)
+    #     merged_df = self.merge_event_df(df_inc_dec=df_inc_dec, df_max_min=df_max_min)
+    #     if for_eval:
+    #         # print(kmeans_dict)
+    #         kmeans_dict = kmeans_dict
+    #         scaler_dict = scaler_dict
+    #         appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
+    #             self.prepare_data4DT(
+    #                 merged_df,
+    #                 kmeans_dict=kmeans_dict,
+    #                 scaler_dict=scaler_dict,
+    #                 for_eval=True,
+    #             )
+    #         )
+    #         # print(kmeans_dict)
+    #     else:
+    #         appended_df, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
+    #             self.prepare_data4DT(merged_df)
+    #         )
+    #     # master_dict = self.helper_instance.update_master_dict(master_dict)
+    #     full_data = appended_df.copy()
 
-        return full_data, kmeans_dict, scaler_dict, cluster_centroids, master_dict
+    #     return full_data, kmeans_dict, scaler_dict, cluster_centroids, master_dict
 
     def apply_lr(
         self, processed_data, target, weights, class_names, master_dict, model_regressor, top_n
@@ -666,7 +891,7 @@ class LomatceExplainer:
         )
         plt.show()
 
-    def _process_events(self, perturbed_instances, n_clusters):
+    def _process_events(self, perturbed_instances, n_clusters, n_jobs=None, config=None, analysis: bool = False,):
         """
         Processes events from perturbed instances.
 
@@ -685,8 +910,8 @@ class LomatceExplainer:
         merged_df = self.merge_event_df(df_inc_dec=df_inc_dec, df_max_min=df_max_min)
 
         # Process the data
-        final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
-            self.prepare_data4DT(merged_df, k=n_clusters)
+        final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats = (
+            self.prepare_data4DT(merged_df, k=n_clusters,n_jobs=n_jobs, config=config, analysis=analysis)
         )
 
         # Verify the shape includes original instance
@@ -705,8 +930,11 @@ class LomatceExplainer:
         #       # Pad with zeros if needed
         #       padding = pd.DataFrame(0, index=range(len(perturbed_instances) - final_data.shape[0]), columns=final_data.columns)
         #       final_data = pd.concat([final_data, padding])
-
-        return final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict
+        
+        # clustering_stats will just be empty if analysis=False
+        # if clustering_stats is None:
+        #     clustering_stats = {}
+        return final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats
 
     def _calculate_important_features(
         self,
@@ -786,6 +1014,8 @@ class LomatceExplainer:
         replacement_method="zero",
         n_jobs=None,
         evaluate_quality=False,
+        analysis = False,
+        config: Optional[LomatceConfig] = None
     ):
         """
         Performs time series local explanation using LOMATCE.
@@ -818,6 +1048,9 @@ class LomatceExplainer:
 
             # Store classifier_fn as instance attribute
             self.classifier_fn = classifier_fn
+            
+            # Use provided config or default
+            cfg = config or self.default_config
 
             # Ensure instance is 1D
             #   origi_instance = origi_instance.reshape(-1)  # Flatten to 1D
@@ -834,8 +1067,8 @@ class LomatceExplainer:
                 f"Perturbed instances shap for classifier: {perturbed_instances.shape}"
             )
             # Process events
-            final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict = (
-                self._process_events(perturbed_instances, n_clusters)
+            final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats = (
+                self._process_events(perturbed_instances, n_clusters, n_jobs=n_jobs, config=config, analysis=analysis)
             )
 
             # Calculate kernel width and weights
@@ -886,7 +1119,8 @@ class LomatceExplainer:
                 kmeans_dict=kmeans_dict,
                 scaler_dict=scaler_dict,
             )
-
+             # Prepare analysis metrics only if requested
+            analysis_metrics = {k: v for k, v in clustering_stats.items()} if analysis else None
             # Create explanation object
             explanation = LomatceExplanation(
                 important_features=selected_features,
@@ -900,16 +1134,17 @@ class LomatceExplainer:
                 raw_probas=perturb_probas,
                 cluster_centroids=cluster_centroids,
                 helper=self.helper_instance,
+                analysis_metrics= analysis_metrics
             )
 
-            # Evaluate explanation quality if requested
-            if evaluate_quality:
-                quality_metrics = self._evaluate_explanation_quality(
-                    explanation, perturbed_instances, perturb_probas, weights
-                )
-                logger.info("Explanation quality metrics:")
-                for metric, value in quality_metrics.items():
-                    logger.info(f"{metric}: {value:.3f}")
+            # # Evaluate explanation quality if requested
+            # if evaluate_quality:
+            #     quality_metrics = self._evaluate_explanation_quality(
+            #         explanation, perturbed_instances, perturb_probas, weights
+            #     )
+            #     logger.info("Explanation quality metrics:")
+            #     for metric, value in quality_metrics.items():
+            #         logger.info(f"{metric}: {value:.3f}")
 
             # Plot explanations
             #   self.plot_explanations(
@@ -967,6 +1202,7 @@ class LomatceExplanation:
         raw_probas=None,
         cluster_centroids=None,
         helper=None,
+        analysis_metrics=None,
     ):
         self.important_features = important_features
         self.prediction_score = prediction_score
@@ -981,6 +1217,7 @@ class LomatceExplanation:
         self.raw_probas = raw_probas
         self.cluster_centroids = cluster_centroids
         self.helper = helper
+        self.analysis_metrics = analysis_metrics # Store analysis metrics like optimal_k, silhouette_score, clustering time and n_jobs if provided
 
     def get_top_features(self, n=10):
         """Returns the top n most important features."""
