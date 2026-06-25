@@ -524,63 +524,256 @@ class HelperClass:
 
         return important_motifs, important_motifs_with_cluster
 
+    # def plot_events_on_time_series(self, X, y, important_motifs, class_names):
+    #     class_idx = y  # Change this index based on the class you want to visualize
+    #     class_name = class_names[class_idx]
+    #     fig, ax = plt.subplots(figsize=(10, 4))
+    #     X = X.reshape(X.shape[1], X.shape[0])
+    #     # print(X)
+
+    #     ax.plot(X, color='C0', linewidth=1.5)
+    #     # Track already annotated extrema
+    #     annotated_extrema = []
+
+    #     # Minimum distance between annotations
+        
+    #     min_gap = 8
+        
+    #     # Iterate over each event name and its corresponding important motifs
+    #     for event_name, motifs in important_motifs.items():
+    #         for motif in motifs:
+    #             event = motif['event']
+    #             importance_score = motif['importance_score']
+                
+    #             if 'increasing' in event_name.lower() or 'decreasing' in event_name.lower():
+    #                 start_time, duration = round(event[0]), round(event[1])
+    #                 event_color = 'green' if "increasing" in event_name.lower() else 'red'
+                
+    #                 if duration > 1:
+    #                     time_values = np.arange(start_time, (start_time + duration))
+    #                     ax.plot(time_values, X[start_time:(start_time + duration)], color=event_color, linewidth=2)
+
+    #                     label_x = int(start_time + duration / 2)
+    #                     label_y = X[label_x]
+    #                     ax.annotate(f'{round(importance_score, 2)}', (label_x, label_y), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=10, color=event_color)
+                
+    #             # elif 'localmax' in event_name.lower() or 'localmin' in event_name.lower():
+    #             #     local_time = round(event[0])
+
+    #             #     marker_color = 'purple' if "localmax" in event_name.lower() else 'blue'
+    #             #     ax.plot(local_time, X[local_time], '*', c=marker_color)
+
+    #             #     ax.annotate(f'{round(importance_score, 2)}', (local_time, X[local_time]), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=10, color=marker_color)
+    #             elif 'localmax' in event_name.lower() or 'localmin' in event_name.lower():
+    #                 local_time = round(event[0])
+
+    #                 is_max = "localmax" in event_name.lower()
+    #                 event_type = "localmax" if is_max else "localmin"
+
+    #                 marker_color = 'purple' if is_max else 'blue'
+
+    #                 ax.plot(local_time, X[local_time], '*', c=marker_color)
+
+    #                 offset = (0, 10) if is_max else (0, -15)
+    #                 score = round(importance_score, 2)
+
+    #                 ax.annotate(
+    #                     f'{score}',
+    #                     (local_time, X[local_time]),
+    #                     textcoords="offset points",
+    #                     xytext=offset,
+    #                     ha='center',
+    #                     fontsize=10,
+    #                     color=marker_color
+    #                 )
+                    
+
+    #                 # # Check if a nearby annotation of same type already exists
+    #                 # already_annotated = any(
+    #                 #     abs(local_time - t) <= min_gap and et == event_type
+    #                 #     for t, et in annotated_extrema
+    #                 # )
+
+    #                 # if not already_annotated:
+
+    #                 #     offset = (0, 10) if is_max else (0, -15)
+    #                 #     va = 'bottom' if is_max else 'top'
+
+    #                 #     ax.annotate(
+    #                 #         f'{score}',
+    #                 #         (local_time, X[local_time]),
+    #                 #         textcoords="offset points",
+    #                 #         xytext=offset,
+    #                 #         ha='center',
+    #                 #         va=va,
+    #                 #         fontsize=10,
+    #                 #         color=marker_color
+    #                 #     )
+
+    #                 #     annotated_extrema.append((local_time, event_type))
+                
+    #     ax.set_title(f'Class: {class_name}', fontsize=14, fontweight='bold')
+    #     ax.set_xlabel('Time Steps', fontsize=12)
+    #     ax.set_ylabel('Value', fontsize=12)
+    #     ax.grid(alpha=0.5)
+        
+    #     # Colored rectangles legend
+    #     colored_rectangles = [plt.Line2D([0, 1], [0, 1], color=color, linewidth=2) for color in ['green', 'red']]
+    #     legend_labels = ['Increasing', 'Decreasing']
+
+    #     # Custom legend markers
+    #     custom_markers = [plt.Line2D([0], [0], marker='*', color='m', label='Local Max', linestyle=''),
+    #                         plt.Line2D([0], [0], marker='*', color='b', label='Local Min', linestyle='')]
+
+    #     # Combine the legend patches and markers
+    #     legend_patches = colored_rectangles + custom_markers
+    #     legend_labels += ['Local Max', 'Local Min']
+
+    #     # Create the legend
+    #     ax.legend(legend_patches, legend_labels, loc='best')
+
+    #     plt.tight_layout()
+    #     plt.savefig(f'{self.base_dir}/important_features_line_plot.png', dpi=300, bbox_inches='tight')
+    #     plt.savefig(f'{self.base_dir}/important_features_line_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
+
+    #     plt.show()  
+        
+        
     def plot_events_on_time_series(self, X, y, important_motifs, class_names):
-        class_idx = y  # Change this index based on the class you want to visualize
+        class_idx = y
         class_name = class_names[class_idx]
+
         fig, ax = plt.subplots(figsize=(10, 4))
+
         X = X.reshape(X.shape[1], X.shape[0])
-        # print(X)
+        X = X.squeeze()
 
         ax.plot(X, color='C0', linewidth=1.5)
-        
-        # Iterate over each event name and its corresponding important motifs
+
+        # Used only to avoid nearby repeated labels
+        annotated_labels = []
+        min_gap = 8
+
         for event_name, motifs in important_motifs.items():
+            event_name_lower = event_name.lower()
+
             for motif in motifs:
                 event = motif['event']
                 importance_score = motif['importance_score']
-                
-                if 'increasing' in event_name.lower() or 'decreasing' in event_name.lower():
+                score = round(importance_score, 2)
+
+                if 'increasing' in event_name_lower or 'decreasing' in event_name_lower:
                     start_time, duration = round(event[0]), round(event[1])
-                    event_color = 'green' if "increasing" in event_name.lower() else 'red'
-                
+                    event_color = 'green' if 'increasing' in event_name_lower else 'red'
+
                     if duration > 1:
-                        time_values = np.arange(start_time, (start_time + duration))
-                        ax.plot(time_values, X[start_time:(start_time + duration)], color=event_color, linewidth=2)
+                        end_time = min(start_time + duration, len(X))
+                        time_values = np.arange(start_time, end_time)
+
+                        ax.plot(
+                            time_values,
+                            X[start_time:end_time],
+                            color=event_color,
+                            linewidth=2
+                        )
 
                         label_x = int(start_time + duration / 2)
+                        label_x = min(max(label_x, 0), len(X) - 1)
                         label_y = X[label_x]
-                        ax.annotate(f'{round(importance_score, 2)}', (label_x, label_y), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=10, color=event_color)
-                
-                elif 'localmax' in event_name.lower() or 'localmin' in event_name.lower():
+
+                        ax.annotate(
+                            f'{score}',
+                            (label_x, label_y),
+                            textcoords='offset points',
+                            xytext=(0, 10),
+                            ha='center',
+                            va='bottom',
+                            fontsize=10,
+                            color=event_color
+                        )
+
+                elif 'localmax' in event_name_lower or 'localmin' in event_name_lower:
                     local_time = round(event[0])
 
-                    marker_color = 'purple' if "localmax" in event_name.lower() else 'blue'
-                    ax.plot(local_time, X[local_time], '*', c=marker_color)
+                    if not (0 <= local_time < len(X)):
+                        continue
 
-                    ax.annotate(f'{round(importance_score, 2)}', (local_time, X[local_time]), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=10, color=marker_color)
-                
+                    is_max = 'localmax' in event_name_lower
+                    event_type = 'localmax' if is_max else 'localmin'
+                    marker_color = 'purple' if is_max else 'blue'
+                    side = 'top' if is_max else 'bottom'
+
+                    ax.plot(
+                        local_time,
+                        X[local_time],
+                        '*',
+                        c=marker_color
+                    
+                    )
+
+                    # Skip only repeated nearby labels with same event type and same score
+                    already_annotated = any(
+                        abs(local_time - t) <= min_gap
+                        and s == score
+                        and et == event_type
+                        and sd == side
+                        for t, s, et, sd in annotated_labels
+                    )
+
+                    if not already_annotated:
+                        offset = (0, 10) if is_max else (0, -15)
+                        va = 'bottom' if is_max else 'top'
+
+                        ax.annotate(
+                            f'{score}',
+                            (local_time, X[local_time]),
+                            textcoords='offset points',
+                            xytext=offset,
+                            ha='center',
+                            va=va,
+                            fontsize=10,
+                            color=marker_color
+                        )
+
+                        annotated_labels.append(
+                            (local_time, score, event_type, side)
+                        )
+
         ax.set_title(f'Class: {class_name}', fontsize=14, fontweight='bold')
         ax.set_xlabel('Time Steps', fontsize=12)
         ax.set_ylabel('Value', fontsize=12)
         ax.grid(alpha=0.5)
-        
-        # Colored rectangles legend
-        colored_rectangles = [plt.Line2D([0, 1], [0, 1], color=color, linewidth=2) for color in ['green', 'red']]
+
+        colored_rectangles = [
+            plt.Line2D([0, 1], [0, 1], color=color, linewidth=2)
+            for color in ['green', 'red']
+        ]
+
         legend_labels = ['Increasing', 'Decreasing']
 
-        # Custom legend markers
-        custom_markers = [plt.Line2D([0], [0], marker='*', color='m', label='Local Max', linestyle=''),
-                            plt.Line2D([0], [0], marker='*', color='b', label='Local Min', linestyle='')]
+        custom_markers = [
+            plt.Line2D([0], [0], marker='*', color='m', label='Local Max', linestyle=''),
+            plt.Line2D([0], [0], marker='*', color='b', label='Local Min', linestyle='')
+        ]
 
-        # Combine the legend patches and markers
         legend_patches = colored_rectangles + custom_markers
         legend_labels += ['Local Max', 'Local Min']
 
-        # Create the legend
         ax.legend(legend_patches, legend_labels, loc='best')
 
         plt.tight_layout()
-        plt.savefig(f'{self.base_dir}/important_features_line_plot.png', dpi=300, bbox_inches='tight')
-        plt.savefig(f'{self.base_dir}/important_features_line_plot.pdf', format='pdf', dpi=300, bbox_inches='tight')
 
-        plt.show()          
+        plt.savefig(
+            f'{self.base_dir}/{class_name}_explanation.png',
+            dpi=300,
+            bbox_inches='tight'
+        )
+
+        plt.savefig(
+            f'{self.base_dir}/{class_name}_explanation.pdf',
+            format='pdf',
+            dpi=300,
+            bbox_inches='tight'
+        )
+
+        plt.show()
