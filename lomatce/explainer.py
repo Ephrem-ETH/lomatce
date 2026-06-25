@@ -33,6 +33,59 @@ from lomatce.utils.test_dataloader import test_dataloader
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# NOTE:
+# This function is defined at the top level (not as a class method) because
+# joblib.Parallel with backend="loky" requires all worker functions to be
+# picklable. Instance methods (self.evaluate_kmeans) cannot be pickled since
+# they capture the entire `self` object, causing:
+#
+#     "Could not pickle the task to send it to the workers"
+#
+# Moving the function outside the class makes it picklable and allows true
+# parallel execution without falling back to sequential mode.
+
+def evaluate_kmeans_static(n_clusters, data_transformed, cfg):
+    n, d = data_transformed.shape
+
+    # choose algorithm
+    use_minibatch = n > cfg.MINIBATCH_THRESHOLD
+    if use_minibatch:
+        from sklearn.cluster import MiniBatchKMeans as KMeansModel
+        kmeans = KMeansModel(
+            n_clusters=n_clusters,
+            init="k-means++",
+            batch_size=2048,
+            n_init=5,
+            max_iter=50,
+            random_state=0,
+        ).fit(data_transformed)
+    else:
+        from sklearn.cluster import KMeans as KMeansModel
+        kmeans = KMeansModel(
+            n_clusters=n_clusters,
+            init="k-means++",
+            n_init=10,
+            max_iter=100,
+            random_state=0,
+        ).fit(data_transformed)
+
+    labels = kmeans.labels_
+
+    # silhouette sampling
+    if cfg.SILHOUETTE_SAMPLE_CAP is None:
+        sample_size = int(max(1000, n * cfg.SILHOUETTE_FRACTION))
+    else:
+        sample_size = min(int(max(1000, n * cfg.SILHOUETTE_FRACTION)), cfg.SILHOUETTE_SAMPLE_CAP)
+
+    if n > sample_size:
+        idx = np.random.choice(n, sample_size, replace=False)
+        silhouette_avg = silhouette_score(data_transformed[idx], labels[idx])
+    else:
+        silhouette_avg = silhouette_score(data_transformed, labels)
+
+    sse = kmeans.inertia_
+
+    return n_clusters, silhouette_avg, sse, kmeans
 
 
 class LomatceExplainer:
@@ -473,9 +526,9 @@ class LomatceExplainer:
    
         
 
-        data = np.array(all_events, dtype=np.float32)
+        data = np.array(all_events, dtype=np.float64)
         scaler = StandardScaler()
-        data_transformed = scaler.fit_transform(data).astype(np.float64)
+        data_transformed = scaler.fit_transform(data)
         n_samples, n_features = data_transformed.shape
 
         # Adaptive CPU utilization
@@ -496,11 +549,19 @@ class LomatceExplainer:
         start_time = time.time()
         
         try:
-            results = Parallel(n_jobs=n_jobs, backend="loky")(
-                delayed(self.evaluate_kmeans)(
+            # results = Parallel(n_jobs=n_jobs, backend="loky")(
+            #     delayed(self.evaluate_kmeans)(
+            #         n_clusters,
+            #         data_transformed,
+            #         config=cfg
+            #     )
+            #     for n_clusters in range(2, max_k)
+            # )
+            results = Parallel(n_jobs=n_jobs, backend="threading")(
+                delayed(evaluate_kmeans_static)(
                     n_clusters,
                     data_transformed,
-                    config=cfg
+                    cfg
                 )
                 for n_clusters in range(2, max_k)
             )
@@ -936,31 +997,84 @@ class LomatceExplainer:
         #     clustering_stats = {}
         return final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats
 
+    # def _calculate_important_features(
+    #     self,
+    #     final_data,
+    #     instances_probs,
+    #     weights,
+    #     class_names,
+    #     master_dict,
+    #     model_regressor,
+    #     top_n,
+    # ):
+    #     """
+    #     Calculates important features using linear regression.
+
+    #     Args:
+    #         final_data (pd.DataFrame): Final processed data
+    #         instances_probs (np.ndarray): Instance probabilities
+    #         weights (np.ndarray): Weights for instances
+    #         class_names (list): List of class names
+    #         master_dict (dict): Master dictionary
+    #         model_regressor (str): Regressor model
+    #         top_n (int): Number of top features to return
+
+    #     Returns:
+    #         tuple: Important features, prediction score, and local prediction
+    #     """
+    #     _, important_features_lr, prediction_score, local_pred = self.apply_lr(
+    #         processed_data=final_data,
+    #         target=instances_probs,
+    #         weights=weights,
+    #         class_names=class_names,
+    #         master_dict=master_dict,
+    #         model_regressor=model_regressor,
+    #         top_n=top_n
+    #     )
+
+    #     # Calculate top_n dynamically
+    #     if isinstance(top_n, (int, float)) and top_n <= 100:
+    #         top_n = max(1, round((top_n / 100) * len(final_data.columns)))
+    #     else:
+    #         top_n = min(top_n, len(final_data.columns))
+
+    #     if top_n > len(final_data.columns):
+    #         logger.warning(
+    #             f"top_n exceeds available features. Adjusting to {len(final_data.columns)}"
+    #         )
+
+    #     # Filter and sort features
+    #     non_zero_features = [
+    #         (index, importance)
+    #         for index, importance in enumerate(important_features_lr)
+    #         if importance > 0
+    #     ]
+    #     sorted_features = sorted(non_zero_features, key=lambda x: x[1], reverse=True)
+    #     selected_features_indices = [index for index, _ in sorted_features[:top_n]]
+
+    #     return (
+    #         {
+    #             final_data.columns[index]: importance
+    #             for index, importance in enumerate(important_features_lr)
+    #             if index in selected_features_indices
+    #         },
+    #         prediction_score,
+    #         local_pred,
+    #     )
     def _calculate_important_features(
-        self,
-        final_data,
-        instances_probs,
-        weights,
-        class_names,
-        master_dict,
-        model_regressor,
-        top_n,
-    ):
+    self,
+    final_data,
+    instances_probs,
+    weights,
+    class_names,
+    master_dict,
+    model_regressor,
+    top_n,
+):
         """
         Calculates important features using linear regression.
-
-        Args:
-            final_data (pd.DataFrame): Final processed data
-            instances_probs (np.ndarray): Instance probabilities
-            weights (np.ndarray): Weights for instances
-            class_names (list): List of class names
-            master_dict (dict): Master dictionary
-            model_regressor (str): Regressor model
-            top_n (int): Number of top features to return
-
-        Returns:
-            tuple: Important features, prediction score, and local prediction
         """
+
         _, important_features_lr, prediction_score, local_pred = self.apply_lr(
             processed_data=final_data,
             target=instances_probs,
@@ -982,20 +1096,49 @@ class LomatceExplainer:
                 f"top_n exceeds available features. Adjusting to {len(final_data.columns)}"
             )
 
-        # Filter and sort features
-        non_zero_features = [
-            (index, importance)
-            for index, importance in enumerate(important_features_lr)
-            if importance > 0
+        # Contribution-based feature selection
+        # original instance is assumed to be the first row
+        original_row = final_data.iloc[0].values
+
+        # Ridge coefficients
+        coefs = important_features_lr
+
+        # # Actual signed contribution of each cluster for this instance
+        # contributions = coefs * original_row
+
+        # # Keep only clusters that are present in the original instance
+        # present_features = [
+        #     (index, contributions[index])
+        #     for index in range(len(contributions))
+        #     if original_row[index] != 0 and contributions[index] != 0
+        # ]
+
+        # # Rank by absolute contribution
+        # sorted_features = sorted(
+        #     present_features,
+        #     key=lambda x: abs(x[1]),
+        #     reverse=True
+        # )
+        contributions = coefs * original_row
+        eps = 0.005  # because values below this round to 0.00
+        positive_features = [
+            (idx, contrib)
+            for idx, contrib in enumerate(contributions)
+            if contrib > eps
         ]
-        sorted_features = sorted(non_zero_features, key=lambda x: x[1], reverse=True)
+
+        sorted_features = sorted(
+            positive_features,
+            key=lambda x: x[1],
+            reverse=True
+            )
+
         selected_features_indices = [index for index, _ in sorted_features[:top_n]]
 
         return (
             {
-                final_data.columns[index]: importance
-                for index, importance in enumerate(important_features_lr)
-                if index in selected_features_indices
+                final_data.columns[index]: contributions[index]
+                for index in selected_features_indices
             },
             prediction_score,
             local_pred,
@@ -1064,7 +1207,7 @@ class LomatceExplainer:
                 (-1, 1, origi_instance.shape[1])
             )
             logger.info(
-                f"Perturbed instances shap for classifier: {perturbed_instances.shape}"
+                f"Perturbed instances shape for classifier: {perturbed_instances.shape}"
             )
             # Process events
             final_data, master_dict, cluster_centroids, kmeans_dict, scaler_dict, clustering_stats = (
@@ -1092,7 +1235,9 @@ class LomatceExplainer:
                 perturb_probas = torch.from_numpy(perturb_probas)
 
             # Get max probabilities for each instance
-            instances_probs, _ = torch.max(perturb_probas, dim=1)
+            # instances_probs, _ = torch.max(perturb_probas, dim=1)
+            original_class = int(perturb_preds[0].item())
+            instances_probs = perturb_probas[:, original_class]
 
             # Calculate important features
             selected_features, prediction_score, local_pred = (
@@ -1161,7 +1306,7 @@ class LomatceExplainer:
             self.helper_instance.plot_events_on_time_series(
                 origi_instance, perturb_preds[0].item(), important_motifs, class_names
             )
-            print(f"Predection probability : {perturb_probas[0]}")
+            print(f"Prediction probability : {perturb_probas[0]}")
             probabilities = perturb_probas[0].squeeze().tolist()
 
             # Print colored filled boxes for each class
