@@ -21,7 +21,7 @@ We propose LOcal Model-Agnostic Time-series Classification Explanations (LOMATCE
   - `perturbation.py`: Applies various perturbation strategies and generates neighboring samples.
   - `lomatce_simulation.py`: Runs the FCN model multiple times with random train-test splits to ensure robustness of results.
   - `lomatce_vs_baseline.py`: Code to compare LOMATCE against LIME, SHAP, Integrated Gradients (IG), and a random baseline.
-  `sp_lomatce.py`: Implements **SP-LOMATCE (L2GTX)**, which aggregates LOMATCE local explanations into global explanations.
+  - `sp_lomatce.py`: Implements **SP-LOMATCE (L2GTX)**, which aggregates LOMATCE local explanations into global explanations.
 
 ## Method Design
 
@@ -30,7 +30,7 @@ We propose LOcal Model-Agnostic Time-series Classification Explanations (LOMATCE
 
 ![center w:13in](./design/lomatce_final.png)
 
-**Fig 1:** Overview of the LOMATCE framework for generating local explanations.*
+*Fig 1: Overview of the LOMATCE framework for generating local explanations.*
 
 ### SP-LOMATCE (L2GTX) Method Design
 ![center w:13in](./design/L2GX_new.png)
@@ -103,7 +103,7 @@ You will get key info like local model prediction, original (black-box model) pr
 Here's an example of LOMATCE highlighting important regions of a time series:
 
 ![center w:13in](./design/lomatce_explanation_example.png)
-**Fig 3:** Explanation highlights segment significance, relevance scores, and event types (e.g., increasing, decreasing, maxima, minima).
+*Fig 3: Explanation highlights segment significance, relevance scores, and event types (e.g., increasing, decreasing, maxima, minima).*
 
 You can explore the example noteboks for each dataset in the [`examples/`] folder.
 
